@@ -16,7 +16,7 @@
 HixConfig           g_config;
 HixWebServer        g_webServer(g_config);
 IRrecv              g_irIn(D5);
-HixPinDigitalOutput g_irOut(D4);
+HixPinDigitalOutput g_irOut(D3);
 
 
 HixMQTT g_mqtt(Secret::WIFI_SSID,
@@ -110,7 +110,7 @@ void loop() {
     g_webServer.handleClient();
     ArduinoOTA.handle();
     //toggle output to test...
-    //g_irOut.toggle();
+    g_irOut.toggle();
     //delay(25);
     decode_results results;
     if (g_irIn.decode(&results)) {
@@ -118,7 +118,7 @@ void loop() {
         Serial.println(val, HEX);
         g_irIn.resume();
     }
-    delay(100);
+    //delay(100);
 }
 
 //////////////////////////////////////////////////////////////////////////////////
