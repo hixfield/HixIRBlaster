@@ -1,137 +1,94 @@
-#include "HixConfig.h"
-#include "HixMQTT.h"
-#include "HixWebServer.h"
-#include "secret.h"
-#include <ArduinoOTA.h>
-#include <FS.h>
-#include <HixPinDigitalInput.h>
-#include <HixPinDigitalOutput.h>
-#include <HixTimeout.h>
-#include <IRac.h>
-#include <IRrecv.h>
+/* Copyright 2019 David Conran
+*
+* An IR LED circuit *MUST* be connected to the ESP8266 on a pin
+* as specified by kIrLed below.
+*
+* TL;DR: The IR LED needs to be driven by a transistor for a good result.
+*
+* Suggested circuit:
+*     https://github.com/crankyoldgit/IRremoteESP8266/wiki#ir-sending
+*
+* Common mistakes & tips:
+*   * Don't just connect the IR LED directly to the pin, it won't
+*     have enough current to drive the IR LED effectively.
+*   * Make sure you have the IR LED polarity correct.
+*     See: https://learn.sparkfun.com/tutorials/polarity/diode-and-led-polarity
+*   * Typical digital camera/phones can be used to see if the IR LED is flashed.
+*     Replace the IR LED with a normal LED if you don't have a digital camera
+*     when debugging.
+*   * Avoid using the following pins unless you really know what you are doing:
+*     * Pin 0/D3: Can interfere with the boot/program mode & support circuits.
+*     * Pin 1/TX/TXD0: Any serial transmissions from the ESP8266 will interfere.
+*     * Pin 3/RX/RXD0: Any serial transmissions to the ESP8266 will interfere.
+*   * ESP-01 modules are tricky. We suggest you use a module with more GPIOs
+*     for your first time. e.g. ESP-12 etc.
+*/
+#include <Arduino.h>
 #include <IRremoteESP8266.h>
-#include <IRtext.h>
-#include <IRutils.h>
-// runtime global variables
-HixConfig           g_config;
-HixWebServer        g_webServer(g_config);
-IRrecv              g_irIn(D5);
-HixPinDigitalOutput g_irOut(D4);
+#include <IRsend.h>
+#include <ir_Samsung.h>
 
+const uint16_t kIrLed = D3;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
+IRSamsungAc ac(kIrLed);     // Set the GPIO used for sending messages.
 
-HixMQTT g_mqtt(Secret::WIFI_SSID,
-               Secret::WIFI_PWD,
-               g_config.getMQTTServer(),
-               g_config.getDeviceType(),
-               g_config.getDeviceVersion(),
-               g_config.getRoom(),
-               g_config.getDeviceTag());
-
-
-//////////////////////////////////////////////////////////////////////////////////
-// Helper functions
-//////////////////////////////////////////////////////////////////////////////////
-
-void resetWithMessage(const char * szMessage) {
-    Serial.println(szMessage);
-    delay(2000);
-    ESP.reset();
+void printState() {
+  // Display the settings.
+  Serial.println("Samsung A/C remote is in the following state:");
+  Serial.printf("  %s\n", ac.toString().c_str());
 }
-
-void configureOTA() {
-    Serial.println("Configuring OTA, my hostname:");
-    Serial.println(g_mqtt.getMqttClientName());
-    ArduinoOTA.setHostname(g_mqtt.getMqttClientName());
-    ArduinoOTA.setPort(8266);
-    //setup handlers
-    ArduinoOTA.onStart([]() {
-        Serial.println("OTA -> Start");
-    });
-    ArduinoOTA.onEnd([]() {
-        Serial.println("OTA -> End");
-    });
-    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-        Serial.printf("OTA -> Progress: %u%%\r", (progress / (total / 100)));
-    });
-    ArduinoOTA.onError([](ota_error_t error) {
-        Serial.printf("OTA -> Error[%u]: ", error);
-        if (error == OTA_AUTH_ERROR)
-            Serial.println("OTA -> Auth Failed");
-        else if (error == OTA_BEGIN_ERROR)
-            Serial.println("OTA -> Begin Failed");
-        else if (error == OTA_CONNECT_ERROR)
-            Serial.println("OTA -> Connect Failed");
-        else if (error == OTA_RECEIVE_ERROR)
-            Serial.println("OTA -> Receive Failed");
-        else if (error == OTA_END_ERROR)
-            Serial.println("OTA -> End Failed");
-    });
-    ArduinoOTA.begin();
-}
-
-//////////////////////////////////////////////////////////////////////////////////
-// Setup
-//////////////////////////////////////////////////////////////////////////////////
 
 void setup() {
-    Serial.begin(115200);
-    Serial.print(F("Startup "));
-    Serial.print(g_config.getDeviceType());
-    Serial.print(F(" "));
-    Serial.println(g_config.getDeviceVersion());
-    //disconnect WiFi -> seams to help for bug that after upload wifi does not want to connect again...
-    Serial.println(F("Disconnecting WIFI"));
-    WiFi.disconnect();
-    //setup pins
-    Serial.println(F("Setting up IR receiver"));
-    g_irIn.enableIRIn();
-    Serial.println(F("Setting up IR transmitter"));
-    g_irOut.begin();
-    // configure MQTT
-    Serial.println(F("Setting up MQTT"));
-    if (!g_mqtt.begin()) resetWithMessage("MQTT allocation failed, resetting");
-    //setup SPIFFS
-    Serial.println(F("Setting up SPIFFS"));
-    if (!SPIFFS.begin()) resetWithMessage("SPIFFS initialization failed, resetting");
-    //setup the server
-    Serial.println(F("Setting up web server"));
-    g_webServer.begin();
-    // all done
-    Serial.println(F("Setup complete"));
-}
+  ac.begin();
+  Serial.begin(115200);
+  delay(200);
 
-//////////////////////////////////////////////////////////////////////////////////
-// Loop
-//////////////////////////////////////////////////////////////////////////////////
+  // Set up what we want to send. See ir_Samsung.cpp for all the options.
+  Serial.println("Default state of the remote.");
+  printState();
+  Serial.println("Setting initial state for A/C.");
+  ac.off();
+  ac.setFan(kSamsungAcFanLow);
+  ac.setMode(kSamsungAcCool);
+  ac.setTemp(25);
+  ac.setSwing(false);
+  printState();
+}
 
 void loop() {
-    //other loop functions
-    g_mqtt.loop();
-    g_webServer.handleClient();
-    ArduinoOTA.handle();
-    //toggle output to test...
-    //g_irOut.toggle();
-    //delay(25);
-    decode_results results;
-    if (g_irIn.decode(&results)) {
-        unsigned long val = results.value;
-        Serial.println(val, HEX);
-        g_irIn.resume();
-    }
-    delay(100);
-}
+  // Turn the A/C unit on
+  Serial.println("Turn on the A/C ...");
+  ac.on();
+  ac.send();
+  printState();
+  delay(100);  // wait 15 seconds
+  // and set to cooling mode.
+  Serial.println("Set the A/C mode to cooling ...");
+  ac.setMode(kSamsungAcCool);
+  ac.send();
+  printState();
+  delay(100);  // wait 15 seconds
 
-//////////////////////////////////////////////////////////////////////////////////
-// Required by the MQTT library
-//////////////////////////////////////////////////////////////////////////////////
+  // Increase the fan speed.
+  Serial.println("Set the fan to high and the swing on ...");
+  ac.setFan(kSamsungAcFanHigh);
+  ac.setSwing(true);
+  ac.send();
+  printState();
+  delay(100);
 
-void onConnectionEstablished() {
-    //setup OTA
-    if (g_config.getOTAEnabled()) {
-        configureOTA();
-    } else {
-        Serial.println("OTA is disabled");
-    }
-    //plushing values
-    g_mqtt.publishDeviceValues();
+  // Change to Fan mode, lower the speed, and stop the swing.
+  Serial.println("Set the A/C to fan only with a low speed, & no swing ...");
+  ac.setSwing(false);
+  ac.setMode(kSamsungAcFan);
+  ac.setFan(kSamsungAcFanLow);
+  ac.send();
+  printState();
+  delay(100);
+
+  // Turn the A/C unit off.
+  Serial.println("Turn off the A/C ...");
+  ac.off();
+  ac.send();
+  printState();
+  delay(100);  // wait 15 seconds
 }
