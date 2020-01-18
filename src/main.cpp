@@ -1,137 +1,92 @@
-#include "HixConfig.h"
-#include "HixMQTT.h"
-#include "HixWebServer.h"
-#include "secret.h"
-#include <ArduinoOTA.h>
-#include <FS.h>
-#include <HixPinDigitalInput.h>
-#include <HixPinDigitalOutput.h>
-#include <HixTimeout.h>
+#include <Arduino.h>
 #include <IRac.h>
 #include <IRrecv.h>
 #include <IRremoteESP8266.h>
 #include <IRtext.h>
 #include <IRutils.h>
-// runtime global variables
-HixConfig           g_config;
-HixWebServer        g_webServer(g_config);
-IRrecv              g_irIn(D5);
-HixPinDigitalOutput g_irOut(D3);
+#include <ir_Samsung.h>
 
+IRSamsungAc g_IRTransmitter(D3);
+IRrecv      g_IRReciever(D5, 1024, 40, true);
 
-HixMQTT g_mqtt(Secret::WIFI_SSID,
-               Secret::WIFI_PWD,
-               g_config.getMQTTServer(),
-               g_config.getDeviceType(),
-               g_config.getDeviceVersion(),
-               g_config.getRoom(),
-               g_config.getDeviceTag());
+decode_results results;
 
-
-//////////////////////////////////////////////////////////////////////////////////
-// Helper functions
-//////////////////////////////////////////////////////////////////////////////////
-
-void resetWithMessage(const char * szMessage) {
-    Serial.println(szMessage);
-    delay(2000);
-    ESP.reset();
+void printACState() {
+    Serial.println("Samsung A/C remote is in the following state:");
+    Serial.printf("  %s\n", g_IRTransmitter.toString().c_str());
 }
 
-void configureOTA() {
-    Serial.println("Configuring OTA, my hostname:");
-    Serial.println(g_mqtt.getMqttClientName());
-    ArduinoOTA.setHostname(g_mqtt.getMqttClientName());
-    ArduinoOTA.setPort(8266);
-    //setup handlers
-    ArduinoOTA.onStart([]() {
-        Serial.println("OTA -> Start");
-    });
-    ArduinoOTA.onEnd([]() {
-        Serial.println("OTA -> End");
-    });
-    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-        Serial.printf("OTA -> Progress: %u%%\r", (progress / (total / 100)));
-    });
-    ArduinoOTA.onError([](ota_error_t error) {
-        Serial.printf("OTA -> Error[%u]: ", error);
-        if (error == OTA_AUTH_ERROR)
-            Serial.println("OTA -> Auth Failed");
-        else if (error == OTA_BEGIN_ERROR)
-            Serial.println("OTA -> Begin Failed");
-        else if (error == OTA_CONNECT_ERROR)
-            Serial.println("OTA -> Connect Failed");
-        else if (error == OTA_RECEIVE_ERROR)
-            Serial.println("OTA -> Receive Failed");
-        else if (error == OTA_END_ERROR)
-            Serial.println("OTA -> End Failed");
-    });
-    ArduinoOTA.begin();
-}
 
-//////////////////////////////////////////////////////////////////////////////////
-// Setup
-//////////////////////////////////////////////////////////////////////////////////
 
 void setup() {
     Serial.begin(115200);
-    Serial.print(F("Startup "));
-    Serial.print(g_config.getDeviceType());
-    Serial.print(F(" "));
-    Serial.println(g_config.getDeviceVersion());
-    //disconnect WiFi -> seams to help for bug that after upload wifi does not want to connect again...
-    Serial.println(F("Disconnecting WIFI"));
-    WiFi.disconnect();
-    //setup pins
-    Serial.println(F("Setting up IR receiver"));
-    g_irIn.enableIRIn();
-    Serial.println(F("Setting up IR transmitter"));
-    g_irOut.begin();
-    // configure MQTT
-    Serial.println(F("Setting up MQTT"));
-    if (!g_mqtt.begin()) resetWithMessage("MQTT allocation failed, resetting");
-    //setup SPIFFS
-    Serial.println(F("Setting up SPIFFS"));
-    if (!SPIFFS.begin()) resetWithMessage("SPIFFS initialization failed, resetting");
-    //setup the server
-    Serial.println(F("Setting up web server"));
-    g_webServer.begin();
-    // all done
-    Serial.println(F("Setup complete"));
+    //configure ir transmitter
+    Serial.println("Setting up IR Transmitter");
+    g_IRTransmitter.begin();
+    //configure receiver
+    Serial.println("Setting up IR Receiver");
+    g_IRReciever.setUnknownThreshold(12);
+    g_IRReciever.enableIRIn();
+    //all done
+    Serial.println("Setup complete");
 }
 
-//////////////////////////////////////////////////////////////////////////////////
-// Loop
-//////////////////////////////////////////////////////////////////////////////////
+void setWarming(int nTemperature) {
+    g_IRTransmitter.on();
+    g_IRTransmitter.setFan(kSamsungAcFanAuto);
+    g_IRTransmitter.setMode(kSamsungAcCool);
+    g_IRTransmitter.setTemp(nTemperature);
+    g_IRTransmitter.setSwing(true);
+    g_IRTransmitter.send();
+}
+
+void setCooling(void) {
+}
+
+void setAuto(void) {
+}
+
+void turnOff(void) {
+    g_IRTransmitter.off();
+    g_IRTransmitter.send();
+}
+
+bool checkIR(void) {
+    // Check if the IR code has been received.
+    if (g_IRReciever.decode(&results)) {
+        // Check if we got an IR message that was to big for our capture buffer.
+        if (results.overflow) Serial.println("Error IR capture buffer overflow");
+        // Display the basic output of what we found.
+        Serial.print("IR Received: ");
+        Serial.println(resultToHexidecimal(&results));
+        //did find something!
+        return true;
+    }
+    //return not found
+    return false;
+}
 
 void loop() {
-    //other loop functions
-    g_mqtt.loop();
-    g_webServer.handleClient();
-    ArduinoOTA.handle();
-    //toggle output to test...
-    g_irOut.toggle();
-    //delay(25);
-    decode_results results;
-    if (g_irIn.decode(&results)) {
-        unsigned long val = results.value;
-        Serial.println(val, HEX);
-        g_irIn.resume();
+    if (checkIR()) {
+        switch (results.value) {
+        case 0x4DE74847:
+            Serial.println("AC Heating");
+            g_IRReciever.disableIRIn();
+            setWarming(28);
+            g_IRReciever.enableIRIn();
+            break;
+        case 0xB8781EF:
+            Serial.println("AC Off");
+            g_IRReciever.disableIRIn();
+            turnOff();
+            g_IRReciever.enableIRIn();
+            break;
+        }
     }
-    //delay(100);
-}
-
-//////////////////////////////////////////////////////////////////////////////////
-// Required by the MQTT library
-//////////////////////////////////////////////////////////////////////////////////
-
-void onConnectionEstablished() {
-    //setup OTA
-    if (g_config.getOTAEnabled()) {
-        configureOTA();
-    } else {
-        Serial.println("OTA is disabled");
-    }
-    //plushing values
-    g_mqtt.publishDeviceValues();
+    /*
+    setWarming(28);
+    delay(5000);
+    turnOff();
+    delay(5000);
+    */
 }
