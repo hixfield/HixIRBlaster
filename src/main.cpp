@@ -1,94 +1,92 @@
-/* Copyright 2019 David Conran
-*
-* An IR LED circuit *MUST* be connected to the ESP8266 on a pin
-* as specified by kIrLed below.
-*
-* TL;DR: The IR LED needs to be driven by a transistor for a good result.
-*
-* Suggested circuit:
-*     https://github.com/crankyoldgit/IRremoteESP8266/wiki#ir-sending
-*
-* Common mistakes & tips:
-*   * Don't just connect the IR LED directly to the pin, it won't
-*     have enough current to drive the IR LED effectively.
-*   * Make sure you have the IR LED polarity correct.
-*     See: https://learn.sparkfun.com/tutorials/polarity/diode-and-led-polarity
-*   * Typical digital camera/phones can be used to see if the IR LED is flashed.
-*     Replace the IR LED with a normal LED if you don't have a digital camera
-*     when debugging.
-*   * Avoid using the following pins unless you really know what you are doing:
-*     * Pin 0/D3: Can interfere with the boot/program mode & support circuits.
-*     * Pin 1/TX/TXD0: Any serial transmissions from the ESP8266 will interfere.
-*     * Pin 3/RX/RXD0: Any serial transmissions to the ESP8266 will interfere.
-*   * ESP-01 modules are tricky. We suggest you use a module with more GPIOs
-*     for your first time. e.g. ESP-12 etc.
-*/
 #include <Arduino.h>
+#include <IRac.h>
+#include <IRrecv.h>
 #include <IRremoteESP8266.h>
-#include <IRsend.h>
+#include <IRtext.h>
+#include <IRutils.h>
 #include <ir_Samsung.h>
 
-const uint16_t kIrLed = D3;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
-IRSamsungAc ac(kIrLed);     // Set the GPIO used for sending messages.
+IRSamsungAc g_IRTransmitter(D3);
+IRrecv      g_IRReciever(D5, 1024, 40, true);
 
-void printState() {
-  // Display the settings.
-  Serial.println("Samsung A/C remote is in the following state:");
-  Serial.printf("  %s\n", ac.toString().c_str());
+decode_results results;
+
+void printACState() {
+    Serial.println("Samsung A/C remote is in the following state:");
+    Serial.printf("  %s\n", g_IRTransmitter.toString().c_str());
 }
 
-void setup() {
-  ac.begin();
-  Serial.begin(115200);
-  delay(200);
 
-  // Set up what we want to send. See ir_Samsung.cpp for all the options.
-  Serial.println("Default state of the remote.");
-  printState();
-  Serial.println("Setting initial state for A/C.");
-  ac.off();
-  ac.setFan(kSamsungAcFanLow);
-  ac.setMode(kSamsungAcCool);
-  ac.setTemp(25);
-  ac.setSwing(false);
-  printState();
+
+void setup() {
+    Serial.begin(115200);
+    //configure ir transmitter
+    Serial.println("Setting up IR Transmitter");
+    g_IRTransmitter.begin();
+    //configure receiver
+    Serial.println("Setting up IR Receiver");
+    g_IRReciever.setUnknownThreshold(12);
+    g_IRReciever.enableIRIn();
+    //all done
+    Serial.println("Setup complete");
+}
+
+void setWarming(int nTemperature) {
+    g_IRTransmitter.on();
+    g_IRTransmitter.setFan(kSamsungAcFanAuto);
+    g_IRTransmitter.setMode(kSamsungAcCool);
+    g_IRTransmitter.setTemp(nTemperature);
+    g_IRTransmitter.setSwing(true);
+    g_IRTransmitter.send();
+}
+
+void setCooling(void) {
+}
+
+void setAuto(void) {
+}
+
+void turnOff(void) {
+    g_IRTransmitter.off();
+    g_IRTransmitter.send();
+}
+
+bool checkIR(void) {
+    // Check if the IR code has been received.
+    if (g_IRReciever.decode(&results)) {
+        // Check if we got an IR message that was to big for our capture buffer.
+        if (results.overflow) Serial.println("Error IR capture buffer overflow");
+        // Display the basic output of what we found.
+        Serial.print("IR Received: ");
+        Serial.println(resultToHexidecimal(&results));
+        //did find something!
+        return true;
+    }
+    //return not found
+    return false;
 }
 
 void loop() {
-  // Turn the A/C unit on
-  Serial.println("Turn on the A/C ...");
-  ac.on();
-  ac.send();
-  printState();
-  delay(100);  // wait 15 seconds
-  // and set to cooling mode.
-  Serial.println("Set the A/C mode to cooling ...");
-  ac.setMode(kSamsungAcCool);
-  ac.send();
-  printState();
-  delay(100);  // wait 15 seconds
-
-  // Increase the fan speed.
-  Serial.println("Set the fan to high and the swing on ...");
-  ac.setFan(kSamsungAcFanHigh);
-  ac.setSwing(true);
-  ac.send();
-  printState();
-  delay(100);
-
-  // Change to Fan mode, lower the speed, and stop the swing.
-  Serial.println("Set the A/C to fan only with a low speed, & no swing ...");
-  ac.setSwing(false);
-  ac.setMode(kSamsungAcFan);
-  ac.setFan(kSamsungAcFanLow);
-  ac.send();
-  printState();
-  delay(100);
-
-  // Turn the A/C unit off.
-  Serial.println("Turn off the A/C ...");
-  ac.off();
-  ac.send();
-  printState();
-  delay(100);  // wait 15 seconds
+    if (checkIR()) {
+        switch (results.value) {
+        case 0x4DE74847:
+            Serial.println("AC Heating");
+            g_IRReciever.disableIRIn();
+            setWarming(28);
+            g_IRReciever.enableIRIn();
+            break;
+        case 0xB8781EF:
+            Serial.println("AC Off");
+            g_IRReciever.disableIRIn();
+            turnOff();
+            g_IRReciever.enableIRIn();
+            break;
+        }
+    }
+    /*
+    setWarming(28);
+    delay(5000);
+    turnOff();
+    delay(5000);
+    */
 }
