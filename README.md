@@ -9,8 +9,6 @@ A WIFI connected IR transmitter and receiverr based on the ESP8266 microcontroll
 - send arbitrary IR (hex) codes.
 - publishes the detected IR codes (via its IR receiver)
 
-![Overview of all components](doc/overview.png)
-
 ## Improvements
 
 - [ ] Configuration of WIFI SSID/PWD via web interface
