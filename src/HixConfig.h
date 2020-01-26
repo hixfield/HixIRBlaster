@@ -13,6 +13,7 @@ class HixConfig {
         char          szRoom[50];
         char          szDeviceTag[50];
         bool          bOTAEnabled;
+        int           nACTemperature;
         unsigned long crc;
     } data;
     //determine crc
@@ -23,17 +24,20 @@ class HixConfig {
   public:
     HixConfig();
     //getters
-    const char * getDeviceType(void) { return "HixCO2"; };
-    const char * getDeviceVersion(void) { return "1.8.0"; };
+    const char * getDeviceType(void) { return "HixIRBlaster"; };
+    const char * getDeviceVersion(void) { return "0.1.0"; };
     const char * getMQTTServer(void);
     const char * getRoom(void);
     const char * getDeviceTag(void);
     bool         getOTAEnabled(void);
+    float        getACTemperature(void);
+
     //setters
     void setMQTTServer(const char * szValue);
     void setRoom(const char * szValue);
     void setDeviceTag(const char * szValue);
     void setOTAEnabled(bool bValue);
+    void setACTemperature(int fValue);
     //save to eeprom
     void commitToEEPROM(void);
     //replaces placeholders in string with config values

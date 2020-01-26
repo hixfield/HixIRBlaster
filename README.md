@@ -4,7 +4,7 @@
 ![Software under development](https://img.shields.io/badge/SW-under%20development-red)
 ![Hardward](https://img.shields.io/badge/HW-prototype-red)
 
-A WIFI connected IR transmitter and receiverr based on the ESP8266 microcontroller. It is connected via MQTT where it :
+A WIFI connected IR transmitter and receiver based on the ESP8266 microcontroller. It is connected via MQTT where it :
 - receives commands to switch-on my airco (Samsung only for the moment)
 - send arbitrary IR (hex) codes.
 - publishes the detected IR codes (via its IR receiver)
@@ -16,6 +16,14 @@ A WIFI connected IR transmitter and receiverr based on the ESP8266 microcontroll
 - [ ] Add DS18B20 temperature sensor?
 - [ ] Add OLED display to show current temp + airco status
 
+## hardware
+- add button
+- add ds18b20
+- add i2c display interface
+- add connector for radar motion?
+- optional i2c term resistor
+- room for the mhz19 (on the side)
+- different places to mount ir receiver or led?
 
 ## MQTT
 
@@ -44,10 +52,10 @@ A WIFI connected IR transmitter and receiverr based on the ESP8266 microcontroll
                      │       └─── ir_received
                      │
                      └─── subscribe
+                     │       └─── ac_temperature
                      │       └─── ac_on
                      │       └─── ac_off
                      │       └─── ac_toggle
-                     │       └─── ac_temperature
                      │       └─── send_raw_ir
                      │
                      └─── influxdb
@@ -73,6 +81,7 @@ Following the `influxdb in` node the json is an array where:
    {
       "wifi_rssi"     : -45
       "ac_enabled"    : true
+      "ir_received"   : "A78BCD"
    },
    {
       "device_type"   : "HixIRBlaster",

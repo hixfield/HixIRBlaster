@@ -2,28 +2,24 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-HixMQTT::HixMQTT(const char * szWifi_SSID,
+HixMQTT::HixMQTT(HixConfig &  config,
+                 const char * szWifi_SSID,
                  const char * szWiFi_Password,
                  const char * szMQTT_Server,
                  const char * szDeviceType,
                  const char * szDeviceVersion,
                  const char * szRoom,
-                 const char * szDeviceTag) : HixMQTTBase(szWifi_SSID, szWiFi_Password, szMQTT_Server, szDeviceType, szDeviceVersion, szRoom, szDeviceTag) {
+                 const char * szDeviceTag) : HixMQTTBase(szWifi_SSID, szWiFi_Password, szMQTT_Server, szDeviceType, szDeviceVersion, szRoom, szDeviceTag),
+                                             m_config(config) {
 }
 
-
-bool HixMQTT::publishStatusValues(int nCO2, float fTemperature) {
-    //call base implementation
-    if (!HixMQTTBase::publishStatusValues()) {
+bool HixMQTT::publishDeviceValues(void) {
+    if (!HixMQTTBase::publishDeviceValues()) {
         return false;
     }
     //my custom implementation
     if (isConnected()) {
-        //dynamic values are not published with a retain = default value = false
-        publish(topicForPath("status/co2"), nCO2);
-        publish(topicForPath("status/temperature"), fTemperature);
-        //publish to influxdb topic
-        publish(topicForPath("influxdb"), influxDBJson(nCO2, fTemperature));
+        publish(topicForPath("device/ac_temperature"), m_config.getACTemperature(), true);
         //return non error
         return true;
     }
@@ -31,34 +27,36 @@ bool HixMQTT::publishStatusValues(int nCO2, float fTemperature) {
     return false;
 }
 
-/*
-  [
-   --> contain the measurements
-   {
-      "co2"           : 4564,
-      "temperature"   : 45,
-      "wifi_rssi"     : -45
-   },
-   --> contain the tags
-   {
-      "device_type"   : "sensor1",
-      "device_version": "device2",
-      "device_tag"    : "1"
-      "room"          : "living",
-      "wifi_ssid"     : "test"
-   }
-  ]
-*/
+bool HixMQTT::publishStatusValues(bool   bACEnabled,
+                                  char * szReceivedIR) {
+    //call base implementation
+    if (!HixMQTTBase::publishStatusValues()) {
+        return false;
+    }
+    //my custom implementation
+    if (isConnected()) {
+        //dynamic values are not published with a retain = default value = false
+        publish(topicForPath("status/ac_enabled"), bACEnabled);
+        if (szReceivedIR) {
+            publish(topicForPath("status/ir_received"), szReceivedIR);
+        }
+        //publish to influxdb topic
+        publish(topicForPath("influxdb"), influxDBJson(bACEnabled, szReceivedIR));
+        //return non error
+        return true;
+    }
+    //not connected, return error
+    return false;
+}
 
-String HixMQTT::influxDBJson(int nCO2, float fTemperature) {
+String HixMQTT::influxDBJson(bool   bACEnabled,
+                             char * szReceivedIr) {
     DynamicJsonDocument doc(500);
 
     //create the measurements => fields
     JsonObject doc_0     = doc.createNestedObject();
-    doc_0["co2"]         = nCO2;
-    doc_0["temperature"] = fTemperature;
-    doc_0["wifi_rssi"]   = WiFi.RSSI();
-    ;
+    doc_0["ac_enabled"]  = bACEnabled;
+    doc_0["ir_received"] = szReceivedIr;
 
     //the device props => tags
     JsonObject doc_1        = doc.createNestedObject();
@@ -67,6 +65,7 @@ String HixMQTT::influxDBJson(int nCO2, float fTemperature) {
     doc_1["device_tag"]     = m_deviceTag;
     doc_1["room"]           = m_room;
     doc_1["wifi_ssid"]      = WiFi.SSID();
+    doc_1["ac_temperature"] = m_config.getACTemperature();
 
     //to string
     String jsonString;

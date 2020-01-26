@@ -11,22 +11,23 @@ HixConfig::HixConfig() {
 }
 
 const char * HixConfig::getMQTTServer(void) {
-    //    return "192.168.99.219";
     return data.szMQTTServer;
 };
 
 const char * HixConfig::getRoom(void) {
-    //   return "test_room";
     return data.szRoom;
 };
 
 const char * HixConfig::getDeviceTag(void) {
-    //  return "test_tag";
     return data.szDeviceTag;
 };
 
 bool HixConfig::getOTAEnabled(void) {
     return data.bOTAEnabled;
+}
+
+float HixConfig::getACTemperature(void) {
+    return data.nACTemperature;
 }
 
 void HixConfig::setMQTTServer(const char * szValue) {
@@ -46,6 +47,10 @@ void HixConfig::setDeviceTag(const char * szValue) {
 
 void HixConfig::setOTAEnabled(bool bValue) {
     data.bOTAEnabled = bValue;
+}
+
+void HixConfig::setACTemperature(int nValue) {
+    data.nACTemperature = nValue;
 }
 
 void HixConfig::commitToEEPROM(void) {
@@ -69,6 +74,7 @@ void HixConfig::commitDefaults(void) {
     setRoom("test_room");
     setDeviceTag("test_tag");
     setOTAEnabled(true);
+    setACTemperature(20);
     commitToEEPROM();
 }
 
@@ -78,5 +84,5 @@ void HixConfig::replacePlaceholders(String & contents) {
     contents.replace("||DEVICE_TAG||", getDeviceTag());
     contents.replace("||DEVICE_TYPE||", getDeviceType());
     contents.replace("||DEVICE_VERSION||", getDeviceVersion());
-    contents.replace("||OTA_ENABLED||", getOTAEnabled()? "checked":"");    
+    contents.replace("||OTA_ENABLED||", getOTAEnabled() ? "checked" : "");
 }
