@@ -20,6 +20,7 @@ A WIFI connected IR transmitter and receiver based on the ESP8266 microcontrolle
 - add button
 - add ds18b20
 - add i2c display interface
+- add RGB lede
 - add connector for radar motion?
 - optional i2c term resistor
 - room for the mhz19 (on the side)
